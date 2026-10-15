@@ -93,6 +93,8 @@ class _PokemonDetailContent extends StatefulWidget {
 
 class _PokemonDetailContentState extends State<_PokemonDetailContent> {
   late final Future<PokemonSpecies> _speciesFuture;
+  late final Future<PokemonEvolutionChain> _evolutionFuture;
+  late final Future<List<PokemonEncounterLocation>> _encounterFuture;
   late final Future<PokemonForm> _formFuture;
   late final Future<List<PokemonAbility>> _abilitiesFuture;
 
@@ -101,6 +103,13 @@ class _PokemonDetailContentState extends State<_PokemonDetailContent> {
     super.initState();
     final name = widget.detail.summary.name;
     _speciesFuture = widget.apiService.fetchPokemonSpecies(name);
+    _evolutionFuture = _speciesFuture.then(
+      (species) =>
+          widget.apiService.fetchEvolutionChain(species.evolutionChainId),
+    );
+    _encounterFuture = widget.apiService.fetchEncounterLocations(
+      widget.detail.summary.id,
+    );
     _formFuture = widget.apiService.fetchPokemonForm(name);
     _abilitiesFuture = widget.apiService.fetchAbilities(
       widget.detail.abilities,
@@ -140,8 +149,10 @@ class _PokemonDetailContentState extends State<_PokemonDetailContent> {
                 left: 18,
                 top: 18,
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 7,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.82),
                     borderRadius: BorderRadius.circular(20),
@@ -164,11 +175,8 @@ class _PokemonDetailContentState extends State<_PokemonDetailContent> {
                   fit: BoxFit.contain,
                   width: 230,
                   height: 230,
-                  errorBuilder: (_, _, _) => Icon(
-                    Icons.catching_pokemon,
-                    size: 120,
-                    color: accent,
-                  ),
+                  errorBuilder: (_, _, _) =>
+                      Icon(Icons.catching_pokemon, size: 120, color: accent),
                 ),
               ),
             ],
@@ -178,10 +186,8 @@ class _PokemonDetailContentState extends State<_PokemonDetailContent> {
         Text(
           _capitalize(detail.summary.name),
           textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                fontWeight: FontWeight.w900,
-                letterSpacing: -0.7,
-              ),
+          style: Theme.of(context).textTheme.headlineMedium
+              ?.copyWith(fontWeight: FontWeight.w900, letterSpacing: -0.7),
         ),
         const SizedBox(height: 10),
         Wrap(
@@ -224,6 +230,18 @@ class _PokemonDetailContentState extends State<_PokemonDetailContent> {
         ...detail.stats.map((stat) => _StatRow(stat: stat, accent: accent)),
         const SizedBox(height: 24),
         _SectionTitle(title: 'Tentang'),
+        _AsyncInfoSection<PokemonEvolutionChain>(
+          title: 'Rantai evolusi',
+          future: _evolutionFuture,
+          builder: (chain) => _EvolutionTree(root: chain.root),
+        ),
+        _AsyncInfoSection<List<PokemonEncounterLocation>>(
+          title: 'Lokasi ditemukan',
+          future: _encounterFuture,
+          builder: (locations) => locations.isEmpty
+              ? const Text('Belum ada data lokasi untuk Pokémon ini.')
+              : _EncounterLocationList(locations: locations),
+        ),
         _AsyncInfoSection<PokemonSpecies>(
           title: 'Deskripsi',
           future: _speciesFuture,
@@ -272,6 +290,126 @@ class _PokemonDetailContentState extends State<_PokemonDetailContent> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _EvolutionTree extends StatelessWidget {
+  const _EvolutionTree({required this.root});
+
+  final PokemonEvolutionNode root;
+
+  @override
+  Widget build(BuildContext context) => _buildNode(root);
+
+  Widget _buildNode(PokemonEvolutionNode node) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: const BoxDecoration(
+                color: Color(0xFFF3F5F8),
+                shape: BoxShape.circle,
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Image.network(
+                node.imageUrl,
+                fit: BoxFit.contain,
+                errorBuilder: (_, _, _) => const Icon(
+                  Icons.catching_pokemon,
+                  color: Color(0xFF9AA4B2),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _capitalize(node.name),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  if (node.requirements.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      node.requirements.join(' · '),
+                      style: const TextStyle(
+                        color: Color(0xFF768196),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+        for (final child in node.evolvesTo)
+          Padding(
+            padding: const EdgeInsets.only(left: 17, top: 7),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.subdirectory_arrow_right_rounded,
+                  color: Color(0xFFB4BCC8),
+                  size: 20,
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(left: 18, top: 4, bottom: 8),
+                  child: _buildNode(child),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _EncounterLocationList extends StatelessWidget {
+  const _EncounterLocationList({required this.locations});
+
+  final List<PokemonEncounterLocation> locations;
+
+  @override
+  Widget build(BuildContext context) {
+    return ExpansionTile(
+      tilePadding: EdgeInsets.zero,
+      childrenPadding: EdgeInsets.zero,
+      title: Text(
+        '${locations.length} lokasi ditemukan',
+        style: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+      subtitle: const Text('Ketuk untuk melihat lokasi dan game'),
+      children: locations
+          .map(
+            (location) => ListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              leading: const Icon(
+                Icons.place_outlined,
+                color: Color(0xFFEF6B55),
+              ),
+              title: Text(_capitalize(location.name.replaceAll('-', ' '))),
+              subtitle: location.versions.isEmpty
+                  ? null
+                  : Text(
+                      location.versions
+                          .map(
+                            (version) =>
+                                _capitalize(version.replaceAll('-', ' ')),
+                          )
+                          .join(' · '),
+                    ),
+            ),
+          )
+          .toList(growable: false),
     );
   }
 }
@@ -423,10 +561,7 @@ class _StatRow extends StatelessWidget {
             width: 110,
             child: Text(
               label,
-              style: const TextStyle(
-                color: Color(0xFF667085),
-                fontSize: 12,
-              ),
+              style: const TextStyle(color: Color(0xFF667085), fontSize: 12),
             ),
           ),
           SizedBox(

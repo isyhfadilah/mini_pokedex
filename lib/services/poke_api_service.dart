@@ -42,6 +42,30 @@ class PokeApiService {
     return PokemonSpecies.fromJson(json);
   }
 
+  Future<PokemonEvolutionChain> fetchEvolutionChain(int id) async {
+    final json = await _getJson('$_baseUrl/evolution-chain/$id');
+    return PokemonEvolutionChain.fromJson(json);
+  }
+
+  Future<List<PokemonEncounterLocation>> fetchEncounterLocations(
+    int pokemonId,
+  ) async {
+    try {
+      final json = jsonDecode(
+        await _getBody('$_baseUrl/pokemon/$pokemonId/encounters'),
+      ) as List<dynamic>;
+      return json
+          .map(
+            (entry) => PokemonEncounterLocation.fromJson(
+              entry as Map<String, dynamic>,
+            ),
+          )
+          .toList(growable: false);
+    } on FormatException {
+      throw const PokeApiException('Respons lokasi Pokémon tidak dapat dibaca.');
+    }
+  }
+
   Future<PokemonForm> fetchPokemonForm(String name) async {
     final json = await _getJson(
       '$_baseUrl/pokemon-form/${Uri.encodeComponent(name)}',
@@ -73,20 +97,22 @@ class PokeApiService {
   }
 
   Future<Map<String, dynamic>> _getJson(String url) async {
+    try {
+      return jsonDecode(await _getBody(url)) as Map<String, dynamic>;
+    } on FormatException {
+      throw const PokeApiException('Respons PokéAPI tidak dapat dibaca.');
+    }
+  }
+
+  Future<String> _getBody(String url) async {
     final response = await _client
         .get(Uri.parse(url), headers: const {'Accept': 'application/json'})
         .timeout(const Duration(seconds: 15));
-
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw PokeApiException(
         'Permintaan ke PokéAPI gagal (${response.statusCode}).',
       );
     }
-
-    try {
-      return jsonDecode(response.body) as Map<String, dynamic>;
-    } on FormatException {
-      throw const PokeApiException('Respons PokéAPI tidak dapat dibaca.');
-    }
+    return response.body;
   }
 }

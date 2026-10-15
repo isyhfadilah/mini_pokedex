@@ -8,7 +8,10 @@ class PokemonSummary {
     final name = json['name'] as String;
     final url = json['url'] as String;
     final id = int.tryParse(
-      RegExp(r'/pokemon/(\d+)/?$').firstMatch(url)?.group(1) ?? '',
+      RegExp(r'/(?:pokemon|pokemon-species)/(\d+)/?$')
+              .firstMatch(url)
+              ?.group(1) ??
+          '',
     );
 
     if (id == null) {
@@ -20,6 +23,18 @@ class PokemonSummary {
 
   String get imageUrl =>
       'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/$id.png';
+}
+
+class PokemonPage {
+  const PokemonPage({
+    required this.results,
+    required this.totalCount,
+    required this.hasNextPage,
+  });
+
+  final List<PokemonSummary> results;
+  final int totalCount;
+  final bool hasNextPage;
 }
 
 class PokemonAbility {

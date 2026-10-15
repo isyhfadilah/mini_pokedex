@@ -14,26 +14,259 @@ class PokemonListScreen extends StatefulWidget {
 }
 
 class _PokemonListScreenState extends State<PokemonListScreen> {
-  late Future<List<PokemonSummary>> _pokemonFuture;
+  static const _pageSize = 20;
+
+  final List<PokemonSummary> _pokemon = [];
   final _searchController = TextEditingController();
-  String _query = '';
+  final _scrollController = ScrollController();
+  String _searchText = '';
+  bool _initialLoading = true;
+  bool _loadingMore = false;
+  bool _hasNextPage = true;
+  int _totalCount = 0;
+  String? _listError;
+  bool _isSearching = false;
+  bool _searchLoading = false;
+  PokemonSummary? _searchResult;
+  String? _searchError;
+  int _searchRequestId = 0;
 
   @override
   void initState() {
     super.initState();
-    _pokemonFuture = widget.apiService.fetchPokemonList();
+    _scrollController.addListener(_onScroll);
+    _loadFirstPage();
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _scrollController
+      ..removeListener(_onScroll)
+      ..dispose();
     super.dispose();
   }
 
-  void _retry() {
+  void _onScroll() {
+    if (!_isSearching &&
+        _scrollController.hasClients &&
+        _scrollController.position.extentAfter < 500) {
+      _loadNextPage();
+    }
+  }
+
+  Future<void> _loadFirstPage() async {
     setState(() {
-      _pokemonFuture = widget.apiService.fetchPokemonList();
+      _initialLoading = true;
+      _loadingMore = false;
+      _hasNextPage = true;
+      _listError = null;
+      _pokemon.clear();
     });
+    await _fetchPage();
+  }
+
+  Future<void> _loadNextPage() async {
+    if (_initialLoading || _loadingMore || !_hasNextPage || _isSearching) {
+      return;
+    }
+    setState(() {
+      _loadingMore = true;
+      _listError = null;
+    });
+    await _fetchPage();
+  }
+
+  Future<void> _fetchPage() async {
+    try {
+      final page = await widget.apiService.fetchPokemonPage(
+        offset: _pokemon.length,
+        limit: _pageSize,
+      );
+      if (!mounted) return;
+      setState(() {
+        _pokemon.addAll(page.results);
+        _totalCount = page.totalCount;
+        _hasNextPage = page.hasNextPage;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _listError = error.toString());
+    } finally {
+      if (mounted) {
+        setState(() {
+          _initialLoading = false;
+          _loadingMore = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _searchPokemon(String value) async {
+    final query = value.trim();
+    if (query.isEmpty) return;
+    final requestId = ++_searchRequestId;
+
+    setState(() {
+      _isSearching = true;
+      _searchLoading = true;
+      _searchResult = null;
+      _searchError = null;
+    });
+
+    try {
+      final result = await widget.apiService.searchPokemonByName(query);
+      if (!mounted || requestId != _searchRequestId) return;
+      setState(() {
+        _searchResult = result;
+        _searchLoading = false;
+      });
+    } catch (error) {
+      if (!mounted || requestId != _searchRequestId) return;
+      setState(() {
+        _searchError = error.toString();
+        _searchLoading = false;
+      });
+    }
+  }
+
+  void _clearSearch() {
+    _searchRequestId++;
+    _searchController.clear();
+    setState(() {
+      _searchText = '';
+      _isSearching = false;
+      _searchLoading = false;
+      _searchResult = null;
+      _searchError = null;
+    });
+  }
+
+  void _openDetail(PokemonSummary pokemon) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PokemonDetailScreen(
+          pokemon: pokemon,
+          apiService: widget.apiService,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPokemonContent() {
+    if (_isSearching) {
+      if (_searchLoading) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      if (_searchError != null) {
+        return _LoadError(
+          message: 'Pencarian gagal.\n$_searchError',
+          onRetry: () => _searchPokemon(_searchController.text),
+        );
+      }
+      final result = _searchResult;
+      if (result == null) {
+        return const _EmptySearchResult();
+      }
+      return _buildPokemonGrid(
+        [result],
+        heading: 'Hasil pencarian',
+        countLabel: '1 Pokémon',
+        paginated: false,
+      );
+    }
+
+    if (_initialLoading && _pokemon.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_listError != null && _pokemon.isEmpty) {
+      return _LoadError(
+        message: 'Daftar Pokémon gagal dimuat.\n$_listError',
+        onRetry: _loadFirstPage,
+      );
+    }
+    if (_pokemon.isEmpty) {
+      return const _EmptySearchResult();
+    }
+
+    return _buildPokemonGrid(
+      _pokemon,
+      heading: 'Pokédex',
+      countLabel: '${_pokemon.length} dari $_totalCount spesies',
+      paginated: true,
+    );
+  }
+
+  Widget _buildPokemonGrid(
+    List<PokemonSummary> pokemon, {
+    required String heading,
+    required String countLabel,
+    required bool paginated,
+  }) {
+    final showFooter = paginated &&
+        (_loadingMore || (_listError != null && _pokemon.isNotEmpty));
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+          child: Row(
+            children: [
+              Text(
+                heading,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 17,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                countLabel,
+                style: const TextStyle(
+                  color: Color(0xFF8993A3),
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: GridView.builder(
+            controller: _scrollController,
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+            itemCount: pokemon.length + (showFooter ? 1 : 0),
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 220,
+              mainAxisExtent: 208,
+              crossAxisSpacing: 13,
+              mainAxisSpacing: 13,
+            ),
+            itemBuilder: (context, index) {
+              if (index >= pokemon.length) {
+                if (_loadingMore) {
+                  return const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  );
+                }
+                return Center(
+                  child: TextButton.icon(
+                    onPressed: _loadNextPage,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Coba muat lagi'),
+                  ),
+                );
+              }
+
+              final item = pokemon[index];
+              return _PokemonCard(
+                pokemon: item,
+                onTap: () => _openDetail(item),
+              );
+            },
+          ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -131,18 +364,16 @@ class _PokemonListScreenState extends State<PokemonListScreen> {
                     controller: _searchController,
                     textInputAction: TextInputAction.search,
                     onChanged: (value) =>
-                        setState(() => _query = value.trim().toLowerCase()),
+                        setState(() => _searchText = value),
+                    onSubmitted: _searchPokemon,
                     decoration: InputDecoration(
                       hintText: 'Cari Pokémon...',
                       prefixIcon: const Icon(Icons.search_rounded),
-                      suffixIcon: _query.isEmpty
+                      suffixIcon: _searchText.isEmpty
                           ? null
                           : IconButton(
                               tooltip: 'Hapus pencarian',
-                              onPressed: () {
-                                _searchController.clear();
-                                setState(() => _query = '');
-                              },
+                              onPressed: _clearSearch,
                               icon: const Icon(Icons.close),
                             ),
                     ),
@@ -150,109 +381,7 @@ class _PokemonListScreenState extends State<PokemonListScreen> {
                 ],
               ),
             ),
-            Expanded(
-              child: FutureBuilder<List<PokemonSummary>>(
-                future: _pokemonFuture,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (snapshot.hasError) {
-                    return _LoadError(
-                      message:
-                          'Daftar Pokémon gagal dimuat.\n${snapshot.error}',
-                      onRetry: _retry,
-                    );
-                  }
-
-                  final pokemon = snapshot.data!
-                      .where((item) => item.name.contains(_query.toLowerCase()))
-                      .toList(growable: false);
-
-                  if (pokemon.isEmpty) {
-                    return const Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.search_off_rounded,
-                            size: 42,
-                            color: Color(0xFF9AA4B2),
-                          ),
-                          SizedBox(height: 10),
-                          Text(
-                            'Pokémon tidak ditemukan',
-                            style: TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            'Coba kata kunci yang berbeda.',
-                            style: TextStyle(color: Color(0xFF768196)),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                        child: Row(
-                          children: [
-                            const Text(
-                              'Pokédex',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w800,
-                                fontSize: 17,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              '${pokemon.length} ditemukan',
-                              style: const TextStyle(
-                                color: Color(0xFF8993A3),
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Expanded(
-                        child: GridView.builder(
-                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                          itemCount: pokemon.length,
-                          gridDelegate:
-                              const SliverGridDelegateWithMaxCrossAxisExtent(
-                                maxCrossAxisExtent: 220,
-                                mainAxisExtent: 208,
-                                crossAxisSpacing: 13,
-                                mainAxisSpacing: 13,
-                              ),
-                          itemBuilder: (context, index) {
-                            final item = pokemon[index];
-                            return _PokemonCard(
-                              pokemon: item,
-                              onTap: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute<void>(
-                                    builder: (_) => PokemonDetailScreen(
-                                      pokemon: item,
-                                      apiService: widget.apiService,
-                                    ),
-                                  ),
-                                );
-                              },
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ),
+            Expanded(child: _buildPokemonContent()),
           ],
         ),
       ),
@@ -395,6 +524,36 @@ class _LoadError extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _EmptySearchResult extends StatelessWidget {
+  const _EmptySearchResult();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.search_off_rounded,
+            size: 42,
+            color: Color(0xFF9AA4B2),
+          ),
+          SizedBox(height: 10),
+          Text(
+            'Pokémon tidak ditemukan',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+          SizedBox(height: 4),
+          Text(
+            'Periksa ejaan nama lalu coba lagi.',
+            style: TextStyle(color: Color(0xFF768196)),
+          ),
+        ],
       ),
     );
   }

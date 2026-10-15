@@ -5,9 +5,10 @@ import 'package:http/http.dart' as http;
 import '../models/pokemon.dart';
 
 class PokeApiException implements Exception {
-  const PokeApiException(this.message);
+  const PokeApiException(this.message, {this.statusCode});
 
   final String message;
+  final int? statusCode;
 
   @override
   String toString() => message;
@@ -19,15 +20,48 @@ class PokeApiService {
   static const _baseUrl = 'https://pokeapi.co/api/v2';
   final http.Client _client;
 
-  Future<List<PokemonSummary>> fetchPokemonList() async {
-    final json = await _getJson('$_baseUrl/pokemon?limit=200');
+  Future<PokemonPage> fetchPokemonPage({
+    int offset = 0,
+    int limit = 20,
+  }) async {
+    if (offset < 0 || limit <= 0) {
+      throw ArgumentError('Offset harus >= 0 dan limit harus > 0.');
+    }
+    final json = await _getJson(
+      '$_baseUrl/pokemon-species?limit=$limit&offset=$offset',
+    );
     final results = json['results'] as List<dynamic>;
-    return results
-        .map(
-          (entry) =>
-              PokemonSummary.fromJson(entry as Map<String, dynamic>),
-        )
-        .toList(growable: false);
+    return PokemonPage(
+      results: results
+          .map(
+            (entry) => PokemonSummary.fromJson(entry as Map<String, dynamic>),
+          )
+          .toList(growable: false),
+      totalCount: json['count'] as int,
+      hasNextPage: json['next'] != null,
+    );
+  }
+
+  Future<PokemonSummary?> searchPokemonByName(String query) async {
+    final name = query.trim().toLowerCase();
+    if (name.isEmpty) {
+      return null;
+    }
+
+    try {
+      final json = await _getJson(
+        '$_baseUrl/pokemon-species/${Uri.encodeComponent(name)}',
+      );
+      return PokemonSummary(
+        id: json['id'] as int,
+        name: json['name'] as String,
+      );
+    } on PokeApiException catch (error) {
+      if (error.statusCode == 404) {
+        return null;
+      }
+      rethrow;
+    }
   }
 
   Future<PokemonDetail> fetchPokemonDetail(String name) async {
@@ -111,6 +145,7 @@ class PokeApiService {
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw PokeApiException(
         'Permintaan ke PokéAPI gagal (${response.statusCode}).',
+        statusCode: response.statusCode,
       );
     }
     return response.body;

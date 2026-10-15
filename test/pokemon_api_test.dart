@@ -6,6 +6,53 @@ import 'package:http/testing.dart';
 import 'package:mini_pokodex/services/poke_api_service.dart';
 
 void main() {
+  group('Pokémon list and search', () {
+    test(
+      'requests an offset page and reports whether another page exists',
+      () async {
+        final client = MockClient((request) async {
+          expect(request.url.path, '/api/v2/pokemon-species');
+          expect(request.url.queryParameters, {'limit': '20', 'offset': '40'});
+          return http.Response(
+            jsonEncode({
+              'count': 1000,
+              'next': 'https://pokeapi.co/api/v2/pokemon?offset=60&limit=20',
+              'results': [
+                {
+                  'name': 'meowth',
+                  'url': 'https://pokeapi.co/api/v2/pokemon-species/52/',
+                },
+              ],
+            }),
+            200,
+          );
+        });
+
+        final page = await PokeApiService(client: client)
+            .fetchPokemonPage(offset: 40, limit: 20);
+
+        expect(page.totalCount, 1000);
+        expect(page.results.single.name, 'meowth');
+        expect(page.hasNextPage, isTrue);
+      },
+    );
+
+    test('returns no search result for an unknown Pokémon name', () async {
+      final client = MockClient((request) async {
+        expect(
+          request.url.path,
+          '/api/v2/pokemon-species/not-a-pokemon',
+        );
+        return http.Response('{}', 404);
+      });
+
+      final result = await PokeApiService(client: client)
+          .searchPokemonByName('not-a-pokemon');
+
+      expect(result, isNull);
+    });
+  });
+
   group('additional Pokémon endpoints', () {
     test('loads evolution branches and their requirements', () async {
       final client = MockClient((request) async {

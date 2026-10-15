@@ -35,7 +35,12 @@ class _PokemonDetailScreenState extends State<PokemonDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_capitalize(widget.pokemon.name))),
+      appBar: AppBar(
+        title: const Text(
+          'Detail Pokémon',
+          style: TextStyle(fontWeight: FontWeight.w800),
+        ),
+      ),
       body: FutureBuilder<PokemonDetail>(
         future: _detailFuture,
         builder: (context, snapshot) {
@@ -105,51 +110,90 @@ class _PokemonDetailContentState extends State<_PokemonDetailContent> {
   @override
   Widget build(BuildContext context) {
     final detail = widget.detail;
+    final accent = _typeColor(detail.types.first);
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
       children: [
         Container(
-          height: 230,
+          height: 255,
+          clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            color: const Color(0xFFF8E9E3),
+            color: accent.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(28),
           ),
-          child: Hero(
-            tag: 'pokemon-${detail.summary.id}',
-            child: Image.network(
-              detail.summary.imageUrl,
-              fit: BoxFit.contain,
-              errorBuilder: (_, _, _) => const Icon(
-                Icons.catching_pokemon,
-                size: 120,
-                color: Color(0xFFCC3D3D),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Positioned(
+                right: -28,
+                bottom: -62,
+                child: Container(
+                  width: 205,
+                  height: 205,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: accent.withValues(alpha: 0.12),
+                  ),
+                ),
               ),
-            ),
+              Positioned(
+                left: 18,
+                top: 18,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.82),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '#${detail.summary.id.toString().padLeft(3, '0')}',
+                    style: TextStyle(
+                      color: accent,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.6,
+                    ),
+                  ),
+                ),
+              ),
+              Hero(
+                tag: 'pokemon-${detail.summary.id}',
+                child: Image.network(
+                  detail.summary.imageUrl,
+                  fit: BoxFit.contain,
+                  width: 230,
+                  height: 230,
+                  errorBuilder: (_, _, _) => Icon(
+                    Icons.catching_pokemon,
+                    size: 120,
+                    color: accent,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 20),
-        Text(
-          '#${detail.summary.id.toString().padLeft(3, '0')}',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: Colors.grey.shade600,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.2,
-          ),
-        ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 18),
         Text(
           _capitalize(detail.summary.name),
           textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.headlineMedium
-              ?.copyWith(fontWeight: FontWeight.w900),
+          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.7,
+              ),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 10),
         Wrap(
           alignment: WrapAlignment.center,
-          spacing: 8,
+          spacing: 7,
           children: detail.types
-              .map((type) => _TypeChip(label: _capitalize(type)))
+              .map(
+                (type) => _TypeChip(
+                  label: _capitalize(type),
+                  color: _typeColor(type),
+                ),
+              )
               .toList(growable: false),
         ),
         const SizedBox(height: 22),
@@ -160,6 +204,7 @@ class _PokemonDetailContentState extends State<_PokemonDetailContent> {
                 label: 'Tinggi',
                 value: '${(detail.height / 10).toStringAsFixed(1)} m',
                 icon: Icons.height,
+                accent: accent,
               ),
             ),
             const SizedBox(width: 12),
@@ -168,6 +213,7 @@ class _PokemonDetailContentState extends State<_PokemonDetailContent> {
                 label: 'Berat',
                 value: '${(detail.weight / 10).toStringAsFixed(1)} kg',
                 icon: Icons.monitor_weight_outlined,
+                accent: accent,
               ),
             ),
           ],
@@ -175,7 +221,7 @@ class _PokemonDetailContentState extends State<_PokemonDetailContent> {
         const SizedBox(height: 24),
         _SectionTitle(title: 'Statistik dasar'),
         const SizedBox(height: 12),
-        ...detail.stats.map((stat) => _StatRow(stat: stat)),
+        ...detail.stats.map((stat) => _StatRow(stat: stat, accent: accent)),
         const SizedBox(height: 24),
         _SectionTitle(title: 'Tentang'),
         _AsyncInfoSection<PokemonSpecies>(
@@ -245,19 +291,32 @@ class _AsyncInfoSection<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       margin: const EdgeInsets.only(top: 10),
-      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: const BorderSide(color: Color(0xFFEBEEF3)),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+            Text(
+              title,
+              style: const TextStyle(
+                color: Color(0xFF344054),
+                fontWeight: FontWeight.w800,
+              ),
+            ),
             const SizedBox(height: 8),
             FutureBuilder<T>(
               future: future,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const LinearProgressIndicator();
+                  return const LinearProgressIndicator(
+                    minHeight: 3,
+                    color: Color(0xFFEF6B55),
+                    backgroundColor: Color(0xFFF2F3F6),
+                  );
                 }
                 if (snapshot.hasError) {
                   return Text(
@@ -280,11 +339,13 @@ class _MeasurementCard extends StatelessWidget {
     required this.label,
     required this.value,
     required this.icon,
+    required this.accent,
   });
 
   final String label;
   final String value;
   final IconData icon;
+  final Color accent;
 
   @override
   Widget build(BuildContext context) {
@@ -292,13 +353,14 @@ class _MeasurementCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFEBEEF3)),
       ),
       child: Column(
         children: [
-          Icon(icon, color: const Color(0xFFCC3D3D)),
-          const SizedBox(height: 8),
-          Text(label, style: TextStyle(color: Colors.grey.shade600)),
+          Icon(icon, color: accent),
+          const SizedBox(height: 7),
+          Text(label, style: const TextStyle(color: Color(0xFF768196))),
           const SizedBox(height: 4),
           Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
         ],
@@ -308,16 +370,23 @@ class _MeasurementCard extends StatelessWidget {
 }
 
 class _TypeChip extends StatelessWidget {
-  const _TypeChip({required this.label});
+  const _TypeChip({required this.label, required this.color});
 
   final String label;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
     return Chip(
       label: Text(label),
-      backgroundColor: const Color(0xFFF8E9E3),
+      labelStyle: TextStyle(
+        color: color,
+        fontWeight: FontWeight.w700,
+        fontSize: 12,
+      ),
+      backgroundColor: color.withValues(alpha: 0.12),
       side: BorderSide.none,
+      visualDensity: VisualDensity.compact,
     );
   }
 }
@@ -332,15 +401,16 @@ class _SectionTitle extends StatelessWidget {
     return Text(
       title,
       style: Theme.of(context).textTheme.titleLarge
-          ?.copyWith(fontWeight: FontWeight.w800),
+          ?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -0.3),
     );
   }
 }
 
 class _StatRow extends StatelessWidget {
-  const _StatRow({required this.stat});
+  const _StatRow({required this.stat, required this.accent});
 
   final PokemonStat stat;
+  final Color accent;
 
   @override
   Widget build(BuildContext context) {
@@ -349,7 +419,16 @@ class _StatRow extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
         children: [
-          SizedBox(width: 110, child: Text(label)),
+          SizedBox(
+            width: 110,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Color(0xFF667085),
+                fontSize: 12,
+              ),
+            ),
+          ),
           SizedBox(
             width: 32,
             child: Text(
@@ -362,14 +441,28 @@ class _StatRow extends StatelessWidget {
               value: (stat.value / 255).clamp(0, 1),
               minHeight: 8,
               borderRadius: BorderRadius.circular(8),
-              color: const Color(0xFFCC3D3D),
-              backgroundColor: const Color(0xFFF1D9D2),
+              color: accent,
+              backgroundColor: accent.withValues(alpha: 0.13),
             ),
           ),
         ],
       ),
     );
   }
+}
+
+Color _typeColor(String type) {
+  return switch (type) {
+    'grass' || 'bug' => const Color(0xFF48A878),
+    'fire' => const Color(0xFFE87955),
+    'water' || 'ice' => const Color(0xFF5389D4),
+    'electric' => const Color(0xFFD5A52D),
+    'poison' || 'ghost' => const Color(0xFF9064B8),
+    'psychic' || 'fairy' => const Color(0xFFD66C9B),
+    'ground' || 'rock' => const Color(0xFFB1844D),
+    'fighting' || 'dragon' => const Color(0xFFD15D56),
+    _ => const Color(0xFF748092),
+  };
 }
 
 String _capitalize(String value) =>
